@@ -229,13 +229,12 @@ abstract class ComicsPage<T extends BaseComic> extends StatelessWidget {
 
   /// 当前页面展示出的漫画列表(去除被屏蔽的作品)
   List<T> _currentComics(ComicsPageLogic logic) {
-    List<T>? list;
+    List<T> list;
     if (appdata.settings[25] == "0") {
-      list = logic.comics;
+      list = (logic.comics ?? const []).cast<T>();
     } else {
-      list = logic.dividedComics?[logic.current];
+      list = (logic.dividedComics?[logic.current] ?? const []).cast<T>();
     }
-    if (list == null) return [];
     if (appdata.appSettings.fullyHideBlockedWorks) {
       return list.where((comic) => isBlocked(comic) == null).toList();
     }
@@ -454,7 +453,7 @@ abstract class ComicsPage<T extends BaseComic> extends StatelessWidget {
         Positioned.fill(
           child: Material(
             color: isSelected
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.12)
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.12)
                 : Colors.transparent,
             child: InkWell(
               onTap: () => logic.toggleSelect(index),
@@ -545,12 +544,9 @@ abstract class ComicsPage<T extends BaseComic> extends StatelessWidget {
     var items = selected.map((comic) => FavoriteItem.fromBaseComic(comic)).toList();
 
     var folderNames = LocalFavoritesManager().folderNames;
-    String? folder = appdata.settings[51];
-    if (folder == null || folder.isEmpty || !folderNames.contains(folder)) {
-      folder = folderNames.isNotEmpty ? folderNames.first : null;
-    }
-    if (folder == null) {
-      folder = "1";
+    var folder = appdata.settings[51];
+    if (folder.isEmpty || !folderNames.contains(folder)) {
+      folder = folderNames.isNotEmpty ? folderNames.first : "1";
     }
     var initialFolderIndex = folderNames.indexOf(folder);
     await showDialog(
