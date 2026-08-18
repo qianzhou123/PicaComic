@@ -23,6 +23,39 @@ class ComicsPageLogic<T> extends StateController {
 
   bool showFloatingButton = true;
 
+  ///是否处于多选模式
+  bool selecting = false;
+
+  ///已选中的漫画在列表中的下标
+  final Set<int> selected = {};
+
+  int get selectedCount => selected.length;
+
+  void enterSelectMode() {
+    selecting = true;
+    update();
+  }
+
+  void exitSelectMode() {
+    selecting = false;
+    selected.clear();
+    update();
+  }
+
+  void toggleSelect(int index) {
+    if (!selected.remove(index)) {
+      selected.add(index);
+    }
+    update();
+  }
+
+  void selectAll(int count) {
+    selected
+      ..clear()
+      ..addAll(List<int>.generate(count, (i) => i));
+    update();
+  }
+
   void get(Future<Res<List<T>>> Function(int) getComics) async {
     if (loadingData) return;
     loadingData = true;
@@ -97,6 +130,7 @@ class ComicsPageLogic<T> extends StateController {
     loading = true;
     comics = null;
     message = null;
+    selected.clear();
     update();
   }
 }
@@ -141,218 +175,11 @@ abstract class ComicsPage<T extends BaseComic> extends StatelessWidget {
 
   @override
   Widget build(context) {
-    Widget? removeSliver(Widget? widget) {
-      if (widget == null) return null;
-
-      if (widget is SliverToBoxAdapter) {
-        return widget.child;
-      }
-
-      if (widget is SliverPersistentHeader) {
-        return SizedBox(
-          height: widget.delegate.minExtent,
-          child: widget.delegate.build(
-            context,
-            widget.delegate.minExtent,
-            false,
-          ),
-        );
-      }
-
-      return widget;
-    }
-
     Widget body = StateBuilder<ComicsPageLogic<T>>(
         init: ComicsPageLogic<T>(),
         tag: tag,
         builder: (logic) {
-          if (logic.dividedComics?[logic.current] == null &&
-              logic.message == null &&
-              appdata.settings[25] != "0") {
-            logic.loading = true;
-          }
-          if (logic.loading) {
-            logic.get(getComics);
-            return Column(
-              children: [
-                if (title != null) const Appbar(title: Text("")),
-                removeSliver(header) ?? const SizedBox(),
-                const Expanded(
-                  child: Center(
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              ],
-            );
-          } else if (logic.message != null) {
-            return Column(
-              children: [
-                removeSliver(header) ?? const SizedBox(),
-                Expanded(
-                    child: NetworkError(
-                  message: logic.message ?? "Network Error",
-                  retry: logic.refresh,
-                  withAppbar: title != null,
-                ))
-              ],
-            );
-          } else {
-            if (appdata.settings[25] == "0") {
-              List<T> comics = [];
-              if (appdata.appSettings.fullyHideBlockedWorks) {
-                for (var comic in logic.comics!) {
-                  if (isBlocked(comic) == null) {
-                    comics.add(comic);
-                  }
-                }
-              } else {
-                comics = logic.comics!;
-              }
-              if (comics.isEmpty) {
-                return SmoothCustomScrollView(
-                  slivers: [
-                    if (title != null)
-                      SliverAppbar(
-                        title: Text(title!),
-                        actions: tailing != null ? [tailing!] : null,
-                      ),
-                    if (header != null) header!,
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: buildEmptyView(context),
-                    ),
-                  ],
-                );
-              }
-              return SmoothCustomScrollView(
-                slivers: [
-                  if (title != null)
-                    SliverAppbar(
-                      title: Text(title!),
-                      actions: tailing != null ? [tailing!] : null,
-                    ),
-                  if (header != null) header!,
-                  SliverGrid(
-                    delegate: SliverChildBuilderDelegate(
-                        childCount: comics.length, (context, i) {
-                      if (i == comics.length - 1) {
-                        logic.loadNextPage(getComics);
-                      }
-                      return buildItem(context, comics[i]);
-                    }),
-                    gridDelegate: SliverGridDelegateWithComics(),
-                  ),
-                  if (logic.current < (logic.maxPage ?? 114514) &&
-                      logic.loadingData)
-                    const SliverToBoxAdapter(
-                      child: ListLoadingIndicator(),
-                    )
-                  else
-                    const SliverToBoxAdapter(
-                      child: SizedBox(
-                        height: 80,
-                      ),
-                    )
-                ],
-              );
-            } else {
-              List<T> comics = [];
-              if (appdata.appSettings.fullyHideBlockedWorks) {
-                for (var comic in logic.dividedComics![logic.current]!) {
-                  if (isBlocked(comic) == null) {
-                    comics.add(comic);
-                  }
-                }
-              } else {
-                comics = logic.dividedComics![logic.current]!;
-              }
-              if (comics.isEmpty) {
-                return SmoothCustomScrollView(
-                  slivers: [
-                    if (title != null)
-                      SliverAppbar(
-                        title: Text(title!),
-                        actions: tailing != null ? [tailing!] : null,
-                      ),
-                    if (header != null) header!,
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: buildEmptyView(context),
-                    ),
-                  ],
-                );
-              }
-              Widget body = SmoothCustomScrollView(
-                slivers: [
-                  if (title != null)
-                    SliverAppbar(
-                      title: Text(title!),
-                      actions: tailing != null ? [tailing!] : null,
-                    ),
-                  if (header != null) header!,
-                  if (showPageIndicator &&
-                      appdata.settings[64] == "0" &&
-                      logic.maxPage != 1)
-                    buildPageSelector(context, logic),
-                  SliverGrid(
-                    delegate: SliverChildBuilderDelegate(
-                        childCount: comics.length, (context, i) {
-                      return buildItem(context, comics[i]);
-                    }),
-                    gridDelegate: SliverGridDelegateWithComics(),
-                  ),
-                  if (showPageIndicator &&
-                      appdata.settings[64] == "0" &&
-                      logic.maxPage != 1)
-                    buildPageSelector(context, logic),
-                  SliverPadding(
-                      padding: EdgeInsets.only(
-                          bottom: MediaQuery.of(context).padding.bottom))
-                ],
-              );
-
-              body = NotificationListener<ScrollUpdateNotification>(
-                onNotification: (notifications) {
-                  if (notifications.scrollDelta != null) {
-                    if (notifications.scrollDelta! > 0 &&
-                        logic.showFloatingButton) {
-                      logic.showFloatingButton = false;
-                      logic.update();
-                    } else if ((notifications.scrollDelta! < 0 ||
-                            notifications.metrics.pixels ==
-                                notifications.metrics.minScrollExtent ||
-                            notifications.metrics.pixels ==
-                                notifications.metrics.maxScrollExtent) &&
-                        !logic.showFloatingButton) {
-                      logic.showFloatingButton = true;
-                      logic.update();
-                    }
-                  }
-                  return false;
-                },
-                child: body,
-              );
-
-              if (showPageIndicator && appdata.settings[64] == "1") {
-                return Stack(
-                  children: [
-                    Positioned.fill(
-                      child: body,
-                    ),
-                    Positioned(
-                      left: 0,
-                      right: 12,
-                      top: 0,
-                      bottom: 0,
-                      child: buildPageSelectorRight(context, logic),
-                    )
-                  ],
-                );
-              } else {
-                return body;
-              }
-            }
-          }
+          return _withSelectionBar(context, logic, _buildBody(context, logic));
         });
 
     if (header != null && UiMode.m1(context)) {
@@ -377,6 +204,440 @@ abstract class ComicsPage<T extends BaseComic> extends StatelessWidget {
         child: body,
       );
     }
+  }
+
+  Widget? _removeSliver(Widget? widget) {
+    if (widget == null) return null;
+
+    if (widget is SliverToBoxAdapter) {
+      return widget.child;
+    }
+
+    if (widget is SliverPersistentHeader) {
+      return SizedBox(
+        height: widget.delegate.minExtent,
+        child: widget.delegate.build(
+          App.globalContext!,
+          widget.delegate.minExtent,
+          false,
+        ),
+      );
+    }
+
+    return widget;
+  }
+
+  /// 当前页面展示出的漫画列表(去除被屏蔽的作品)
+  List<T> _currentComics(ComicsPageLogic logic) {
+    List<T>? list;
+    if (appdata.settings[25] == "0") {
+      list = logic.comics;
+    } else {
+      list = logic.dividedComics?[logic.current];
+    }
+    if (list == null) return [];
+    if (appdata.appSettings.fullyHideBlockedWorks) {
+      return list.where((comic) => isBlocked(comic) == null).toList();
+    }
+    return list;
+  }
+
+  Widget _buildBody(BuildContext context, ComicsPageLogic logic) {
+    if (logic.dividedComics?[logic.current] == null &&
+        logic.message == null &&
+        appdata.settings[25] != "0") {
+      logic.loading = true;
+    }
+    if (logic.loading) {
+      logic.get(getComics);
+      return Column(
+        children: [
+          if (title != null) const Appbar(title: Text("")),
+          _removeSliver(header) ?? const SizedBox(),
+          const Expanded(
+            child: Center(
+              child: CircularProgressIndicator(),
+            ),
+          )
+        ],
+      );
+    } else if (logic.message != null) {
+      return Column(
+        children: [
+          _removeSliver(header) ?? const SizedBox(),
+          Expanded(
+              child: NetworkError(
+            message: logic.message ?? "Network Error",
+            retry: logic.refresh,
+            withAppbar: title != null,
+          ))
+        ],
+      );
+    } else {
+      if (appdata.settings[25] == "0") {
+        List<T> comics = _currentComics(logic);
+        if (comics.isEmpty) {
+          return SmoothCustomScrollView(
+            slivers: [
+              if (title != null) _buildAppbar(context, logic),
+              if (header != null) header!,
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: buildEmptyView(context),
+              ),
+            ],
+          );
+        }
+        return SmoothCustomScrollView(
+          slivers: [
+            if (title != null) _buildAppbar(context, logic),
+            if (header != null) header!,
+            SliverGrid(
+              delegate: SliverChildBuilderDelegate(
+                  childCount: comics.length, (context, i) {
+                if (i == comics.length - 1) {
+                  logic.loadNextPage(getComics);
+                }
+                return _buildItemWithSelection(context, comics[i], i, logic);
+              }),
+              gridDelegate: SliverGridDelegateWithComics(),
+            ),
+            if (logic.current < (logic.maxPage ?? 114514) && logic.loadingData)
+              const SliverToBoxAdapter(
+                child: ListLoadingIndicator(),
+              )
+            else
+              const SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 80,
+                ),
+              )
+          ],
+        );
+      } else {
+        List<T> comics = _currentComics(logic);
+        if (comics.isEmpty) {
+          return SmoothCustomScrollView(
+            slivers: [
+              if (title != null) _buildAppbar(context, logic),
+              if (header != null) header!,
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: buildEmptyView(context),
+              ),
+            ],
+          );
+        }
+        Widget body = SmoothCustomScrollView(
+          slivers: [
+            if (title != null) _buildAppbar(context, logic),
+            if (header != null) header!,
+            if (showPageIndicator &&
+                appdata.settings[64] == "0" &&
+                logic.maxPage != 1)
+              buildPageSelector(context, logic),
+            SliverGrid(
+              delegate: SliverChildBuilderDelegate(
+                  childCount: comics.length, (context, i) {
+                return _buildItemWithSelection(context, comics[i], i, logic);
+              }),
+              gridDelegate: SliverGridDelegateWithComics(),
+            ),
+            if (showPageIndicator &&
+                appdata.settings[64] == "0" &&
+                logic.maxPage != 1)
+              buildPageSelector(context, logic),
+            SliverPadding(
+                padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).padding.bottom))
+          ],
+        );
+
+        body = NotificationListener<ScrollUpdateNotification>(
+          onNotification: (notifications) {
+            if (notifications.scrollDelta != null) {
+              if (notifications.scrollDelta! > 0 && logic.showFloatingButton) {
+                logic.showFloatingButton = false;
+                logic.update();
+              } else if ((notifications.scrollDelta! < 0 ||
+                      notifications.metrics.pixels ==
+                          notifications.metrics.minScrollExtent ||
+                      notifications.metrics.pixels ==
+                          notifications.metrics.maxScrollExtent) &&
+                  !logic.showFloatingButton) {
+                logic.showFloatingButton = true;
+                logic.update();
+              }
+            }
+            return false;
+          },
+          child: body,
+        );
+
+        if (showPageIndicator && appdata.settings[64] == "1") {
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: body,
+              ),
+              Positioned(
+                left: 0,
+                right: 12,
+                top: 0,
+                bottom: 0,
+                child: buildPageSelectorRight(context, logic),
+              )
+            ],
+          );
+        } else {
+          return body;
+        }
+      }
+    }
+  }
+
+  /// 多选模式下的顶栏
+  Widget _buildAppbar(BuildContext context, ComicsPageLogic logic) {
+    var comicsCount = _currentComics(logic).length;
+    return SliverAppbar(
+      radius: UiMode.m1(context) ? 0 : 16,
+      color: logic.selecting
+          ? Theme.of(context).colorScheme.primaryContainer
+          : null,
+      leading: logic.selecting
+          ? IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => logic.exitSelectMode(),
+            )
+          : null,
+      title: logic.selecting
+          ? Text("已选择 @num 个项目".tlParams({"num": logic.selectedCount.toString()}))
+          : Text(title!),
+      actions: [
+        if (tailing != null && !logic.selecting) tailing!,
+        if (comicsCount > 0)
+          if (logic.selecting)
+            IconButton(
+              tooltip: "全选".tl,
+              icon: Icon(logic.selectedCount == comicsCount
+                  ? Icons.deselect
+                  : Icons.select_all),
+              onPressed: () {
+                if (logic.selectedCount == comicsCount) {
+                  logic.selected.clear();
+                } else {
+                  logic.selectAll(comicsCount);
+                }
+                logic.update();
+              },
+            )
+          else
+            IconButton(
+              tooltip: "多选".tl,
+              icon: const Icon(Icons.checklist),
+              onPressed: () => logic.enterSelectMode(),
+            ),
+      ],
+    );
+  }
+
+  /// 多选模式下给每个漫画块添加选择层
+  Widget _buildItemWithSelection(
+      BuildContext context, T item, int index, ComicsPageLogic logic) {
+    var tile = buildItem(context, item);
+    if (!logic.selecting) return tile;
+    final isSelected = logic.selected.contains(index);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        tile,
+        Positioned.fill(
+          child: Material(
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.12)
+                : Colors.transparent,
+            child: InkWell(
+              onTap: () => logic.toggleSelect(index),
+              child: Align(
+                alignment: Alignment.topRight,
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Icon(
+                    isSelected
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.white,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 多选模式下在底部附加操作栏
+  Widget _withSelectionBar(
+      BuildContext context, ComicsPageLogic logic, Widget child) {
+    if (!logic.selecting) return child;
+    return Column(
+      children: [
+        Expanded(child: child),
+        _buildSelectionBar(context, logic),
+      ],
+    );
+  }
+
+  Widget _buildSelectionBar(BuildContext context, ComicsPageLogic logic) {
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      elevation: 8,
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 52,
+          child: Row(
+            children: [
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: logic.selectedCount == 0
+                    ? null
+                    : () => _batchFavorite(context, logic),
+                icon: const Icon(Icons.bookmark_add_outlined),
+                label: Text("收藏".tl),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: logic.selectedCount == 0
+                    ? null
+                    : () => _batchDownload(context, logic),
+                icon: const Icon(Icons.download_outlined),
+                label: Text("下载".tl),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: () => logic.exitSelectMode(),
+                child: Text("完成".tl),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<T> _selectedComics(ComicsPageLogic logic) {
+    var comics = _currentComics(logic);
+    return [
+      for (var i in logic.selected)
+        if (i >= 0 && i < comics.length) comics[i],
+    ];
+  }
+
+  /// 批量加入本地收藏
+  Future<void> _batchFavorite(BuildContext context, ComicsPageLogic logic) async {
+    var selected = _selectedComics(logic);
+    if (selected.isEmpty) return;
+    var items = selected.map((comic) => FavoriteItem.fromBaseComic(comic)).toList();
+
+    var folderNames = LocalFavoritesManager().folderNames;
+    String? folder = appdata.settings[51];
+    if (folder == null || folder.isEmpty || !folderNames.contains(folder)) {
+      folder = folderNames.isNotEmpty ? folderNames.first : null;
+    }
+    if (folder == null) {
+      folder = "1";
+    }
+    var initialFolderIndex = folderNames.indexOf(folder);
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        String? newFolder = folder;
+        return SimpleDialog(
+          title: Text("收藏到收藏夹".tl),
+          children: [
+            ListTile(
+              title: Text("收藏夹".tl),
+              trailing: Select(
+                outline: true,
+                width: 180,
+                values: folderNames,
+                initialValue: initialFolderIndex == -1 ? null : initialFolderIndex,
+                onChange: (i) => newFolder = folderNames[i],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: FilledButton(
+                child: Text("确认".tl),
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  for (var f in items) {
+                    LocalFavoritesManager().addComic(newFolder!, f);
+                  }
+                  logic.exitSelectMode();
+                  showToast(message: "已收藏".tl);
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 批量下载
+  Future<void> _batchDownload(BuildContext context, ComicsPageLogic logic) async {
+    var selected = _selectedComics(logic);
+    if (selected.isEmpty) return;
+    var source = ComicSource.find(sourceKey);
+    if (source == null || source.loadComicInfo == null) {
+      showToast(message: "该漫画源不支持下载".tl);
+      return;
+    }
+    var controller = showLoadingDialog(
+      context,
+      message: "获取漫画信息".tl,
+      allowCancel: false,
+    );
+    int success = 0;
+    int failed = 0;
+    try {
+      for (var comic in selected) {
+        var res = await source.loadComicInfo!(comic.id);
+        if (res.success) {
+          var data = res.data;
+          List<int> eps;
+          if (data.chapters == null || data.chapters!.isEmpty) {
+            eps = [0];
+          } else {
+            eps = List<int>.generate(data.chapters!.length, (i) => i);
+          }
+          downloadManager.addCustomDownload(data, eps);
+          success++;
+        } else {
+          failed++;
+        }
+      }
+    } finally {
+      controller.close();
+    }
+    if (failed > 0) {
+      showToast(
+          message: "已添加 @num 个下载任务, @failed 个失败".tlParams({
+        "num": success.toString(),
+        "failed": failed.toString(),
+      }));
+    } else {
+      showToast(
+          message: "已添加 @num 个下载任务".tlParams({"num": success.toString()}));
+    }
+    logic.exitSelectMode();
   }
 
   Widget buildPageSelector(BuildContext context, ComicsPageLogic logic) {
